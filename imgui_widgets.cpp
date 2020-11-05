@@ -8827,7 +8827,7 @@ void    ImGui::TableUpdateLayout(ImGuiTable* table)
     // (can't make auto padding larger than what WorkRect knows about so right-alignment matches)
     const ImRect work_rect = table->WorkRect;
     const float min_column_width = TableGetMinColumnWidth();
-    const float min_column_width_padded = min_column_width + table->CellPaddingX * 2.0f;
+    const float min_column_distance = min_column_width + table->CellPaddingX * 2.0f + table->CellSpacingX1 + table->CellSpacingX2;
 
     int count_fixed = 0;
     float sum_weights_stretched = 0.0f;     // Sum of all weights for weighted columns.
@@ -9029,14 +9029,14 @@ void    ImGui::TableUpdateLayout(ImGuiTable* table)
         {
             // Frozen columns can't reach beyond visible width else scrolling will naturally break.
             if (order_n < table->FreezeColumnsRequest)
-                max_x = table->InnerClipRect.Max.x - (table->FreezeColumnsRequest - order_n) * min_column_width_padded - table->OuterPaddingX;
+                max_x = table->InnerClipRect.Max.x - (table->FreezeColumnsRequest - order_n) * min_column_distance;
         }
         else if ((table->Flags & ImGuiTableFlags_NoKeepColumnsVisible) == 0)
         {
             // If horizontal scrolling if disabled, we apply a final lossless shrinking of columns in order to make
             // sure they are all visible. Because of this we also know that all of the columns will always fit in
             // table->WorkRect and therefore in table->InnerRect (because ScrollX is off)
-            max_x = table->WorkRect.Max.x - (table->ColumnsVisibleCount - (column->IndexWithinVisibleSet + 1)) * min_column_width_padded - table->OuterPaddingX;
+            max_x = table->WorkRect.Max.x - (table->ColumnsVisibleCount - column->IndexWithinVisibleSet - 1) * min_column_distance - table->OuterPaddingX - table->CellSpacingX2;
         }
         if (offset_x + column->WidthGiven + table->CellPaddingX * 2.0f > max_x)
             column->WidthGiven = ImMax(max_x - offset_x - table->CellPaddingX * 2.0f, min_column_width);
@@ -10087,9 +10087,9 @@ void    ImGui::TableEndRow(ImGuiTable* table)
 // FIXME-TABLE FIXME-OPT: Could probably shortcut some things for non-active or clipped columns.
 void    ImGui::TableBeginCell(ImGuiTable* table, int column_n)
 {
-    table->CurrentColumn = column_n;
     ImGuiTableColumn* column = &table->Columns[column_n];
     ImGuiWindow* window = table->InnerWindow;
+    table->CurrentColumn = column_n;
 
     // Start position is roughly ~~ CellRect.Min + CellPadding + Indent
     float start_x = column->ContentMinX;
@@ -10105,7 +10105,7 @@ void    ImGui::TableBeginCell(ImGuiTable* table, int column_n)
     window->DC.NavLayerCurrent = (ImGuiNavLayer)column->NavLayerCurrent;
 
     window->WorkRect.Min.y = window->DC.CursorPos.y;
-    window->WorkRect.Min.x = column->MinX + table->CellPaddingX + table->CellSpacingX1;
+    window->WorkRect.Min.x = column->ContentMinX; // == column->MinX + table->CellPaddingX + table->CellSpacingX1;
     window->WorkRect.Max.x = column->MaxX - table->CellPaddingX - table->CellSpacingX2;
 
     // To allow ImGuiListClipper to function we propagate our row height
@@ -10119,6 +10119,7 @@ void    ImGui::TableBeginCell(ImGuiTable* table, int column_n)
     }
     else
     {
+        // FIXME-TABLE: Could avoid this if draw channel is dummy channel?
         SetWindowClipRectBeforeSetChannel(window, column->ClipRect);
         table->DrawSplitter.SetCurrentChannel(window->DrawList, column->DrawChannelCurrent);
     }

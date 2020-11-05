@@ -1909,17 +1909,17 @@ struct ImGuiTableColumn
     float                   ContentMaxXHeadersUsed;         // Contents maximum position for headers rows (regardless of freezing). TableHeader() automatically softclip itself + report ideal desired size, to avoid creating extraneous draw calls
     float                   ContentMaxXHeadersIdeal;
     ImS16                   NameOffset;                     // Offset into parent ColumnsNames[]
-    bool                    IsVisible;                      // Is the column not marked Hidden by the user? (could be clipped by scrolling, etc).
+    bool                    IsVisible;                      // Is the column not marked Hidden by the user? (even if off view, e.g. clipped by scrolling).
     bool                    IsVisibleNextFrame;
-    bool                    IsClipped;                      // Set when not overlapping the host window clipping rectangle.
-    bool                    IsSkipItems;
+    bool                    IsClipped;                      // Is not actually in view (e.g. not overlapping the host window clipping rectangle).
+    bool                    IsSkipItems;                    // Do we want item submissions to this column to be ignored early on.
     ImS8                    NavLayerCurrent;                // ImGuiNavLayer in 1 byte
     ImS8                    DisplayOrder;                   // Index within Table's IndexToDisplayOrder[] (column may be reordered by users)
     ImS8                    IndexWithinVisibleSet;          // Index within visible set (<= IndexToDisplayOrder)
     ImS8                    PrevVisibleColumn;              // Index of prev visible column within Columns[], -1 if first visible column
     ImS8                    NextVisibleColumn;              // Index of next visible column within Columns[], -1 if last visible column
-    ImS8                    SortOrder;                      // -1: Not sorting on this column
-    ImS8                    SortDirection;                  // enum ImGuiSortDirection_
+    ImS8                    SortOrder;                      // Index of this column within sort specs, -1 if not sorting on this column, 0 for single-sort, may be >0 on multi-sort
+    ImS8                    SortDirection;                  // ImGuiSortDirection_Ascending or ImGuiSortDirection_Descending
     ImU8                    AutoFitQueue;                   // Queue of 8 values for the next 8 frames to request auto-fit
     ImU8                    CannotSkipItemsQueue;           // Queue of 8 values for the next 8 frames to disable Clipped/SkipItem
     ImU8                    DrawChannelCurrent;             // Index within DrawSplitter.Channels[]
