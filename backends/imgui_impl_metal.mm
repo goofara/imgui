@@ -22,7 +22,15 @@
 #include "imgui.h"
 #include "imgui_impl_metal.h"
 
+#include "ImGuiBuildMetal.h"
+
+#define GLFW_INCLUDE_NONE
+#include <GLFW/glfw3.h>
+#define GLFW_EXPOSE_NATIVE_COCOA
+#include <GLFW/glfw3native.h>
+
 #import <Metal/Metal.h>
+#import <QuartzCore/QuartzCore.h>
 // #import <QuartzCore/CAMetalLayer.h> // Not supported in XCode 9.2. Maybe a macro to detect the SDK version can be used (something like #if MACOS_SDK >= 10.13 ...)
 #import <simd/simd.h>
 
@@ -76,11 +84,16 @@ static MetalContext *g_sharedMetalContext = nil;
 
 #pragma mark - ImGui API implementation
 
+static void ImGui_ImplMetal_InitPlatformInterface();
+static void ImGui_ImplMetal_ShutdownPlatformInterface();
+
 bool ImGui_ImplMetal_Init(id<MTLDevice> device)
 {
     ImGuiIO& io = ImGui::GetIO();
     io.BackendRendererName = "imgui_impl_metal";
     io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset;  // We can honor the ImDrawCmd::VtxOffset field, allowing for large meshes.
+    
+    io.BackendFlags |= ImGuiBackendFlags_RendererHasViewports;
 
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
@@ -88,12 +101,16 @@ bool ImGui_ImplMetal_Init(id<MTLDevice> device)
     });
 
     ImGui_ImplMetal_CreateDeviceObjects(device);
+    
+    if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+        ImGui_ImplMetal_InitPlatformInterface();
 
     return true;
 }
 
 void ImGui_ImplMetal_Shutdown()
 {
+    ImGui_ImplMetal_ShutdownPlatformInterface();
     ImGui_ImplMetal_DestroyDeviceObjects();
 }
 
@@ -547,6 +564,63 @@ void ImGui_ImplMetal_DestroyDeviceObjects()
             [weakSelf enqueueReusableBuffer:indexBuffer];
         });
     }];
+}
+
+static void ImGui_ImplMetal_RenderWindow(ImGuiViewport* viewport, void * data)
+{
+    @autoreleasepool {
+        Magic::MetalRenderArgs *renderArgs = reinterpret_cast<Magic::MetalRenderArgs *>(data);
+        GLFWwindow *window = (GLFWwindow *)viewport->PlatformHandle;
+        
+        NSWindow *nativeWindow = glfwGetCocoaWindow(window);
+        CAMetalLayer *metalLayer = NULL;
+        if ([nativeWindow.contentView.layer isKindOfClass:[CAMetalLayer class]] == NO) {
+            metalLayer = [CAMetalLayer layer];
+            metalLayer.device = renderArgs->device;
+            metalLayer.pixelFormat = MTLPixelFormatBGRA8Unorm;
+            nativeWindow.contentView.layer = metalLayer;
+            nativeWindow.contentView.wantsLayer = YES;
+        }
+        else {
+            metalLayer = (CAMetalLayer *)nativeWindow.contentView.layer;
+        }
+        MTLRenderPassDescriptor *renderPassDescriptor = [MTLRenderPassDescriptor new];
+        
+        if (!(viewport->Flags & ImGuiViewportFlags_NoRendererClear))
+        {
+            ImVec4 clear_color = ImVec4(0.0f, 0.0f, 0.0f, 1.0f);
+            renderPassDescriptor.colorAttachments[0].clearColor = MTLClearColorMake(clear_color.x, clear_color.y, clear_color.z, clear_color.w);
+        }
+        id<CAMetalDrawable> drawable = [metalLayer nextDrawable];
+        
+        renderPassDescriptor.colorAttachments[0].texture = drawable.texture;
+        renderPassDescriptor.colorAttachments[0].loadAction = MTLLoadActionClear;
+        renderPassDescriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
+        
+        ImGui_ImplMetal_NewFrame(renderPassDescriptor);
+        
+        id <MTLRenderCommandEncoder> renderEncoder = [renderArgs->commandBuffer renderCommandEncoderWithDescriptor: renderPassDescriptor];
+        [renderEncoder pushDebugGroup:@"viewport"];
+        
+        ImGui_ImplMetal_RenderDrawData(viewport->DrawData, renderArgs->commandBuffer, renderEncoder);
+        
+        [renderEncoder popDebugGroup];
+        
+        [renderEncoder endEncoding];
+        
+        [renderArgs->commandBuffer presentDrawable: drawable];
+    }
+}
+
+static void ImGui_ImplMetal_InitPlatformInterface()
+{
+    ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
+    platform_io.Renderer_RenderWindow = ImGui_ImplMetal_RenderWindow;
+}
+
+static void ImGui_ImplMetal_ShutdownPlatformInterface()
+{
+    ImGui::DestroyPlatformWindows();
 }
 
 @end
